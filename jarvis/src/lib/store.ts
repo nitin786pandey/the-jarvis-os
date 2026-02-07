@@ -41,6 +41,7 @@ export type JournalEntry = {
 
 export type UserState = {
   journalMode?: boolean;
+  talkMode?: boolean;
   autonomyLevel?: 2 | 3;
   lastPlanApprovedAt?: string; // ISO
 };

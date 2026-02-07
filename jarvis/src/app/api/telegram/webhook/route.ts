@@ -1,7 +1,9 @@
 import { Bot, webhookCallback } from "grammy";
-import { getPlan, setPlan, getJournal, setJournal, getUserState, setUserState, lastNDates, getPlans } from "@/lib/store";
+import { getPlan, setPlan, getJournal, setJournal, getUserState, setUserState, lastNDates, getPlans, getJournals } from "@/lib/store";
 import { planToTelegramText } from "@/lib/planner";
 import { analyzeJournal } from "@/lib/adaptive";
+import { getPARAContext } from "@/lib/para-reader";
+import { chat } from "@/lib/llm";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -21,6 +23,44 @@ function isAllowed(chatId: number): boolean {
   const allowed = getChatId();
   return allowed !== null && String(chatId) === allowed;
 }
+
+/** Build context string for talk/guide mode: PARA + recent plans + recent journals. */
+async function buildTalkContext(): Promise<string> {
+  const dates = lastNDates(7);
+  let para = "";
+  try {
+    para = getPARAContext().slice(0, 5500);
+  } catch {
+    para = "(Life/PARA not loaded)";
+  }
+  const plans = await getPlans(dates);
+  const journals = await getJournals(dates);
+  const planLines = dates
+    .filter((d) => plans.has(d))
+    .map((d) => {
+      const p = plans.get(d)!;
+      const tasks = [...p.nonNegotiables, ...p.big3, ...p.growth];
+      const done = tasks.filter((t) => t.done).length;
+      return `${d} (${p.themeName}): ${done}/${tasks.length} done`;
+    });
+  const journalLines = dates
+    .filter((d) => journals.has(d))
+    .map((d) => {
+      const j = journals.get(d)!;
+      const text = (j.text || "").slice(0, 400).replace(/\n/g, " ");
+      return `${d}: ${text}${text.length >= 400 ? "…" : ""}`;
+    });
+  return [
+    "## USER'S LIFE (PARA)\n",
+    para,
+    "\n\n## RECENT PLANS (last 7 days)\n",
+    planLines.length ? planLines.join("\n") : "None yet.",
+    "\n\n## RECENT JOURNALS (last 7 days)\n",
+    journalLines.length ? journalLines.join("\n\n") : "None yet.",
+  ].join("");
+}
+
+const TALK_SYSTEM_PROMPT = `You are Jarvis, the user's personal life planner and guide. You have access to their Life OS: PARA (Projects, Areas, Resources, Archives), daily system, recent daily plans, and journal entries. Use only the context provided—do not invent goals or data. Reply in a short, Telegram-friendly way (a few sentences). Be supportive and actionable. If they ask for plans or tasks, refer to their actual plans and goals from the context.`;
 
 function registerHandlers(bot: Bot): void {
   async function requireAllowed(ctx: { chat: { id: number }; reply: (text: string) => Promise<unknown> }): Promise<boolean> {
@@ -158,9 +198,48 @@ function registerHandlers(bot: Bot): void {
     await ctx.reply("Progress charts are on the PWA. Open the app and go to the Progress page.");
   });
 
+  bot.command("talk", async (ctx) => {
+    if (!(await requireAllowed(ctx))) return;
+    await setUserState({ talkMode: true });
+    await ctx.reply(
+      "Talk mode on. Ask me anything—I have your Life context, recent plans, and journals. /done_talk to exit."
+    );
+  });
+
+  bot.command("done_talk", async (ctx) => {
+    if (!(await requireAllowed(ctx))) return;
+    await setUserState({ talkMode: false });
+    await ctx.reply("Talk mode off.");
+  });
+
   bot.on("message:text", async (ctx) => {
     if (!(await requireAllowed(ctx))) return;
     const state = await getUserState();
+    if (state.talkMode) {
+      const userText = ctx.message.text.trim();
+      if (!userText || userText.startsWith("/")) return;
+      const sent = await ctx.reply("…");
+      try {
+        const context = await buildTalkContext();
+        const systemContent = TALK_SYSTEM_PROMPT + "\n\n---\n\nContext:\n\n" + context;
+        const reply = await chat(
+          [
+            { role: "system", content: systemContent },
+            { role: "user", content: userText },
+          ],
+          { maxTokens: 1024 }
+        );
+        await ctx.api.editMessageText(ctx.chat.id, sent.message_id, reply);
+      } catch (e) {
+        console.error("Talk mode error:", e);
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          sent.message_id,
+          "Something went wrong. Try again or /done_talk to exit."
+        );
+      }
+      return;
+    }
     if (state.journalMode) {
       const date = today();
       const text = ctx.message.text;
@@ -197,6 +276,8 @@ function registerHandlers(bot: Bot): void {
     "/skip <id> [reason] - Skip task, optional reason",
     "/journal - Enter journal mode; next message is your entry",
     "/done_journal - Exit journal mode",
+    "/talk - Free chat with Jarvis (Life + plans + journals)",
+    "/done_talk - Exit talk mode",
     "/adjust <request> - Request change for tomorrow",
     "/approve - Approve tomorrow's plan",
     "/review - Quick weekly stats",
