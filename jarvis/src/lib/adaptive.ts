@@ -28,21 +28,28 @@ export async function analyzeJournal(
 
 /**
  * Build adjustment context for the next plan from the last 3 days of journals.
- * Returns a string to inject into the plan generation prompt.
+ * Includes journal text, mood/energy, and adjustment suggestions from analysis.
  */
 export async function getAdjustmentContext(forDate: string): Promise<string> {
   const dates = lastThreeDays(forDate);
   const journals = await getJournals(dates);
   const lines: string[] = [];
+  const allSuggestions: string[] = [];
   for (const d of dates) {
     const j = journals.get(d);
     if (j?.text) {
       lines.push(`${d}: ${j.text.slice(0, 300)}${j.text.length > 300 ? "..." : ""}`);
       if (j.mood) lines.push(`  (mood: ${j.mood})`);
+      if (j.energy) lines.push(`  (energy: ${j.energy})`);
+      if (j.adjustmentSuggestions?.length) allSuggestions.push(...j.adjustmentSuggestions);
     }
   }
-  if (lines.length === 0) return "";
-  return "Recent journal context:\n" + lines.join("\n");
+  const parts: string[] = [];
+  if (lines.length > 0) parts.push("Recent journal context:\n" + lines.join("\n"));
+  if (allSuggestions.length > 0) {
+    parts.push("Suggestions from journal analysis (use to adapt tomorrow's plan):\n" + allSuggestions.map((s) => `- ${s}`).join("\n"));
+  }
+  return parts.join("\n\n");
 }
 
 function lastThreeDays(fromDate: string): string[] {

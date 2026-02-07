@@ -31,6 +31,9 @@ export async function POST(req: Request) {
     text: existing?.text ? `${existing.text}\n---\n${text}` : text,
     completedTaskIds: completedTaskIds ?? existing?.completedTaskIds,
     skippedTaskIds: skippedTaskIds ?? existing?.skippedTaskIds,
+    mood: existing?.mood,
+    energy: existing?.energy,
+    adjustmentSuggestions: existing?.adjustmentSuggestions,
     createdAt: new Date().toISOString(),
   });
   return NextResponse.json({ ok: true });

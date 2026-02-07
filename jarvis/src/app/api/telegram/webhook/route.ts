@@ -68,7 +68,12 @@ async function buildTalkContext(): Promise<string> {
   ].join("");
 }
 
-const TALK_SYSTEM_PROMPT = `You are Jarvis, the user's personal life planner and guide. You have access to their Life OS: PARA (Projects, Areas, Resources, Archives), daily system, recent daily plans, and journal entries. Use only the context provided—do not invent goals or data. Reply in a short, Telegram-friendly way (a few sentences). Be supportive and actionable. If they ask for plans or tasks, refer to their actual plans and goals from the context.`;
+const TALK_SYSTEM_PROMPT = `You are Jarvis, the user's personal life planner and guide. The context below has three sections: "USER'S LIFE (PARA)" (their goals, projects, areas, resources), "RECENT PLANS", and "RECENT JOURNALS". Use only what is in the context—do not invent data.
+
+Rules:
+- If the user asks for goals, projects, or areas: answer from the "USER'S LIFE (PARA)" section. List concrete goals/projects from that section. If that section says "(Life/PARA not loaded" or is empty, say clearly that their PARA goals are not available in this session.
+- Do not contradict the context: if PARA is marked as not loaded, do not claim you have their PARA or goals. Describe only what the context actually contains.
+- Keep replies short and Telegram-friendly (a few sentences). Be supportive and actionable.`;
 
 function registerHandlers(bot: Bot): void {
   async function requireAllowed(ctx: { chat: { id: number }; reply: (text: string) => Promise<unknown> }): Promise<boolean> {
@@ -257,10 +262,16 @@ function registerHandlers(bot: Bot): void {
       const plan = await getPlan(date);
       let completedTaskIds = existing?.completedTaskIds || [];
       let skippedTaskIds = existing?.skippedTaskIds || [];
+      let mood: string | undefined;
+      let energy: string | undefined;
+      let adjustmentSuggestions: string[] | undefined;
       try {
         const analysis = await analyzeJournal(text, date, plan ? plan.themeName : undefined);
         if (analysis.completedTaskIds?.length) completedTaskIds = [...new Set([...completedTaskIds, ...analysis.completedTaskIds])];
         if (analysis.skippedTaskIds?.length) skippedTaskIds = [...new Set([...skippedTaskIds, ...analysis.skippedTaskIds])];
+        if (analysis.mood) mood = analysis.mood;
+        if (analysis.energy) energy = analysis.energy;
+        if (analysis.adjustmentSuggestions?.length) adjustmentSuggestions = analysis.adjustmentSuggestions;
       } catch {
         // ignore
       }
@@ -269,6 +280,9 @@ function registerHandlers(bot: Bot): void {
         text: existing?.text ? `${existing.text}\n---\n${text}` : text,
         completedTaskIds,
         skippedTaskIds,
+        mood: mood ?? existing?.mood,
+        energy: energy ?? existing?.energy,
+        adjustmentSuggestions: adjustmentSuggestions ?? existing?.adjustmentSuggestions,
         createdAt: new Date().toISOString(),
       });
       await setUserState({ journalMode: false });

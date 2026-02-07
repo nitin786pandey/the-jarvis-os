@@ -49,8 +49,11 @@ export async function generatePlan(forDate: string): Promise<DailyPlan> {
     x.setDate(x.getDate() - i);
     return formatDate(x);
   });
-  const { getJournals } = await import("./store");
-  const journalsMap = await getJournals(recentJournalDates);
+  const { getJournals, getPlans } = await import("./store");
+  const [journalsMap, plansMap] = await Promise.all([
+    getJournals(recentJournalDates),
+    getPlans(recentJournalDates),
+  ]);
   const recentJournals = recentJournalDates
     .map((date) => {
       const j = journalsMap.get(date);
@@ -59,6 +62,21 @@ export async function generatePlan(forDate: string): Promise<DailyPlan> {
     .filter(Boolean)
     .join("\n\n");
 
+  const recentPlanCompletion = recentJournalDates
+    .map((date) => {
+      const plan = plansMap.get(date);
+      if (!plan) return null;
+      const allTasks = [...plan.nonNegotiables, ...plan.big3, ...plan.growth];
+      const done = allTasks.filter((t) => t.done).map((t) => t.id);
+      const notDone = allTasks.filter((t) => !t.done).map((t) => t.id);
+      const parts: string[] = [];
+      if (done.length) parts.push(`done: ${done.join(",")}`);
+      if (notDone.length) parts.push(`not done: ${notDone.join(",")}`);
+      return `${date}: ${parts.join("; ")}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
   const userPrompt = buildPlanUserPrompt(
     forDate,
     dayName(d),
@@ -66,7 +84,8 @@ export async function generatePlan(forDate: string): Promise<DailyPlan> {
     template.summary,
     paraContext,
     recentJournals,
-    adjustmentNote
+    adjustmentNote,
+    recentPlanCompletion
   );
 
   const raw = await chatJSON<LLMPlan>(

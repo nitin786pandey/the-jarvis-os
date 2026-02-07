@@ -36,6 +36,8 @@ export type JournalEntry = {
   completedTaskIds?: string[];
   skippedTaskIds?: string[];
   mood?: string;
+  energy?: string;
+  adjustmentSuggestions?: string[];
   createdAt: string; // ISO
 };
 

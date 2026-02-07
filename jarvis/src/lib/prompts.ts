@@ -48,7 +48,8 @@ export function buildPlanUserPrompt(
   themeSummary: string,
   paraContext: string,
   recentJournals: string,
-  adjustmentNote: string
+  adjustmentNote: string,
+  recentPlanCompletion: string
 ): string {
   return `Generate the daily plan for this date and day.
 
@@ -58,6 +59,9 @@ THEME: ${themeName}
 THEME SUMMARY: ${themeSummary}
 
 ${adjustmentNote ? `ADJUSTMENT CONTEXT (use to adapt the plan):\n${adjustmentNote}\n\n` : ""}
+
+RECENT PLAN COMPLETION (last 3 days — which tasks were done vs not done; use to avoid overloading or to reinforce):
+${recentPlanCompletion || "No plans logged yet."}
 
 RECENT JOURNALS (last 3 days) — use to adapt intensity and focus:
 ${recentJournals || "No journals yet."}
