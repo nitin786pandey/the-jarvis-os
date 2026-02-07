@@ -33,7 +33,7 @@ For daily tasklists, use the Cursor rule at `.cursor/rules/life-daily-tasklist.m
 - Run weekly and monthly reviews from the Life/Daily/system.md templates
 
 ## Meta-skills
-- I understand how to write effective Cursor rules (see Knowledge/Work/how-to-write-cursor-rules.mdc)
+- I understand how to write effective Cursor rules (see ../Work/how-to-write-cursor-rules.mdc when Work repo is open alongside Life)
 - I can improve my own configuration when asked
 - I treat rule-writing as context engineering practice
 - All rule files use `.mdc` extension
