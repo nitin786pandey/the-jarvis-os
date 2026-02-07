@@ -24,32 +24,40 @@ function isAllowed(chatId: number): boolean {
   return allowed !== null && String(chatId) === allowed;
 }
 
-/** Build context string for talk/guide mode: PARA + recent plans + recent journals. */
+/** Build context string for talk/guide mode: PARA + recent plans + recent journals. Never throws. */
 async function buildTalkContext(): Promise<string> {
   const dates = lastNDates(7);
   let para = "";
   try {
     para = getPARAContext().slice(0, 5500);
   } catch {
-    para = "(Life/PARA not loaded)";
+    para = "(Life/PARA not loaded—files may be missing in deployment)";
   }
-  const plans = await getPlans(dates);
-  const journals = await getJournals(dates);
-  const planLines = dates
-    .filter((d) => plans.has(d))
-    .map((d) => {
-      const p = plans.get(d)!;
-      const tasks = [...p.nonNegotiables, ...p.big3, ...p.growth];
-      const done = tasks.filter((t) => t.done).length;
-      return `${d} (${p.themeName}): ${done}/${tasks.length} done`;
-    });
-  const journalLines = dates
-    .filter((d) => journals.has(d))
-    .map((d) => {
-      const j = journals.get(d)!;
-      const text = (j.text || "").slice(0, 400).replace(/\n/g, " ");
-      return `${d}: ${text}${text.length >= 400 ? "…" : ""}`;
-    });
+  let planLines: string[] = [];
+  let journalLines: string[] = [];
+  try {
+    const plans = await getPlans(dates);
+    const journals = await getJournals(dates);
+    planLines = dates
+      .filter((d) => plans.has(d))
+      .map((d) => {
+        const p = plans.get(d)!;
+        const tasks = [...p.nonNegotiables, ...p.big3, ...p.growth];
+        const done = tasks.filter((t) => t.done).length;
+        return `${d} (${p.themeName}): ${done}/${tasks.length} done`;
+      });
+    journalLines = dates
+      .filter((d) => journals.has(d))
+      .map((d) => {
+        const j = journals.get(d)!;
+        const text = (j.text || "").slice(0, 400).replace(/\n/g, " ");
+        return `${d}: ${text}${text.length >= 400 ? "…" : ""}`;
+      });
+  } catch (e) {
+    console.error("buildTalkContext plans/journals:", e);
+    planLines = ["(could not load plans)"];
+    journalLines = ["(could not load journals)"];
+  }
   return [
     "## USER'S LIFE (PARA)\n",
     para,
@@ -232,10 +240,12 @@ function registerHandlers(bot: Bot): void {
         await ctx.api.editMessageText(ctx.chat.id, sent.message_id, reply);
       } catch (e) {
         console.error("Talk mode error:", e);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const safe = errMsg.slice(0, 200).replace(/\n/g, " ");
         await ctx.api.editMessageText(
           ctx.chat.id,
           sent.message_id,
-          "Something went wrong. Try again or /done_talk to exit."
+          `Something went wrong. Try again or /done_talk to exit.\n\nHint: ${safe}`
         );
       }
       return;
