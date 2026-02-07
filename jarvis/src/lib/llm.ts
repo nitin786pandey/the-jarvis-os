@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "https://api.mulerouter.ai/v1";
+const DEFAULT_BASE_URL = "https://api.mulerouter.ai/vendors/openai/v1";
 const DEFAULT_MODEL = "qwen-plus";
 
 type Message = { role: "system" | "user" | "assistant"; content: string };

@@ -30,7 +30,7 @@ Autonomous daily planner that reads your PARA Life OS, generates adaptive daily 
    Copy `.env.local.example` to `.env.local` and set:
 
    - `LLM_API_KEY` — MuleRouter API key ([get one](https://mulerouter.ai/app/api-keys))
-   - `LLM_BASE_URL` — `https://api.mulerouter.ai/v1` (default)
+   - `LLM_BASE_URL` — `https://api.mulerouter.ai/vendors/openai/v1` (default; the `/v1` alias can return 404)
    - `LLM_MODEL` — e.g. `qwen-plus` (or `qwen3-max`, `qwen-flash`). See [supported models](https://mulerouter.ai/docs/api-reference/endpoint/openai/models.md).
    - (Optional fallback: `QWEN_API_KEY`, `QWEN_BASE_URL`, `QWEN_MODEL` still work if `LLM_*` are not set.)
    - `TELEGRAM_BOT_TOKEN` — from BotFather
