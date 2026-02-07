@@ -1,0 +1,221 @@
+import { Bot, webhookCallback } from "grammy";
+import { getPlan, setPlan, getJournal, setJournal, getUserState, setUserState, lastNDates, getPlans } from "@/lib/store";
+import { planToTelegramText } from "@/lib/planner";
+import { analyzeJournal } from "@/lib/adaptive";
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrow(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function getChatId(): string | null {
+  return process.env.TELEGRAM_CHAT_ID || null;
+}
+
+function isAllowed(chatId: number): boolean {
+  const allowed = getChatId();
+  return allowed !== null && String(chatId) === allowed;
+}
+
+function registerHandlers(bot: Bot): void {
+  bot.command("today", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const date = today();
+    const plan = await getPlan(date);
+    if (!plan) {
+      await ctx.reply("No plan for today. I'll generate one at 9 PM the night before.");
+      return;
+    }
+    await ctx.reply(planToTelegramText(plan));
+  });
+
+  bot.command("tomorrow", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const date = tomorrow();
+    const plan = await getPlan(date);
+    if (!plan) {
+      await ctx.reply("No plan for tomorrow yet. It will be generated at 9 PM tonight.");
+      return;
+    }
+    await ctx.reply(planToTelegramText(plan));
+  });
+
+  bot.command("done", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const args = ctx.message?.text?.split(/\s+/)?.slice(1) || [];
+    const taskId = args[0];
+    if (!taskId) {
+      await ctx.reply("Usage: /done <taskId> e.g. /done b1");
+      return;
+    }
+    const date = today();
+    const plan = await getPlan(date);
+    if (!plan) {
+      await ctx.reply("No plan for today.");
+      return;
+    }
+    const allTasks = [...plan.nonNegotiables, ...plan.big3, ...plan.growth];
+    const t = allTasks.find((x) => x.id === taskId);
+    if (t) t.done = true;
+    await setPlan(plan);
+    await ctx.reply(`Marked ${taskId} done.`);
+  });
+
+  bot.command("skip", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const text = ctx.message?.text?.split(/\s+/)?.slice(1)?.join(" ") || "";
+    const [taskId, ...reasonParts] = text.split(/\s+/);
+    const reason = reasonParts.join(" ");
+    if (!taskId) {
+      await ctx.reply("Usage: /skip <taskId> [reason] e.g. /skip b2 felt tired");
+      return;
+    }
+    const date = today();
+    const journal = await getJournal(date);
+    const existing = journal?.text || "";
+    const skipNote = reason ? `Skipped ${taskId}: ${reason}` : `Skipped ${taskId}`;
+    await setJournal({
+      date,
+      text: existing ? `${existing}\n${skipNote}` : skipNote,
+      skippedTaskIds: [...(journal?.skippedTaskIds || []), taskId],
+      createdAt: new Date().toISOString(),
+    });
+    await ctx.reply("Noted. I'll take that into account for future plans.");
+  });
+
+  bot.command("journal", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    await setUserState({ journalMode: true });
+    await ctx.reply("Journal mode on. Send your entry as a message, then /done_journal when finished.");
+  });
+
+  bot.command("done_journal", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    await setUserState({ journalMode: false });
+    await ctx.reply("Journal mode off.");
+  });
+
+  bot.command("adjust", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const request = ctx.message?.text?.replace(/^\/adjust\s*/, "")?.trim();
+    if (!request) {
+      await ctx.reply("Usage: /adjust <your request> e.g. /adjust swap cardio for swimming today");
+      return;
+    }
+    await ctx.reply(
+      "Got it. I'll factor this into tomorrow's plan. For immediate changes, edit your plan in the PWA or ask again tomorrow."
+    );
+    const journal = await getJournal(today());
+    const existing = journal?.text || "";
+    await setJournal({
+      date: today(),
+      text: existing ? `${existing}\n[Adjustment request]: ${request}` : `[Adjustment request]: ${request}`,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  bot.command("approve", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    await setUserState({ lastPlanApprovedAt: new Date().toISOString() });
+    await ctx.reply("Plan approved. You're all set for tomorrow.");
+  });
+
+  bot.command("review", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const dates = lastNDates(7);
+    const plans = await getPlans(dates);
+    let completed = 0;
+    let total = 0;
+    for (const date of dates) {
+      const p = plans.get(date);
+      if (p) {
+        const tasks = [...p.nonNegotiables, ...p.big3, ...p.growth];
+        total += tasks.length;
+        completed += tasks.filter((t) => t.done).length;
+      }
+    }
+    await ctx.reply(
+      `Weekly review (last 7 days): ${completed}/${total} tasks completed. Check the PWA for full history and progress.`
+    );
+  });
+
+  bot.command("progress", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    await ctx.reply("Progress charts are on the PWA. Open the app and go to the Progress page.");
+  });
+
+  bot.on("message:text", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const state = await getUserState();
+    if (state.journalMode) {
+      const date = today();
+      const text = ctx.message.text;
+      const existing = await getJournal(date);
+      const plan = await getPlan(date);
+      let completedTaskIds = existing?.completedTaskIds || [];
+      let skippedTaskIds = existing?.skippedTaskIds || [];
+      try {
+        const analysis = await analyzeJournal(text, date, plan ? plan.themeName : undefined);
+        if (analysis.completedTaskIds?.length) completedTaskIds = [...new Set([...completedTaskIds, ...analysis.completedTaskIds])];
+        if (analysis.skippedTaskIds?.length) skippedTaskIds = [...new Set([...skippedTaskIds, ...analysis.skippedTaskIds])];
+      } catch {
+        // ignore
+      }
+      await setJournal({
+        date,
+        text: existing?.text ? `${existing.text}\n---\n${text}` : text,
+        completedTaskIds,
+        skippedTaskIds,
+        createdAt: new Date().toISOString(),
+      });
+      await setUserState({ journalMode: false });
+      await ctx.reply("Journal saved. I'll use it to adapt future plans.");
+      return;
+    }
+    if (ctx.message.text.startsWith("/")) return;
+    await ctx.reply("Send /today for today's plan, /journal to log your day, or /help for all commands.");
+  });
+
+  bot.command("help", async (ctx) => {
+    if (!isAllowed(ctx.chat.id)) return;
+    const help = [
+      "/today — Show today's plan",
+      "/tomorrow — Show tomorrow's plan",
+      "/done <id> — Mark task done (e.g. /done b1)",
+      "/skip <id> [reason] — Skip task, optional reason",
+      "/journal — Enter journal mode; next message is your entry",
+      "/done_journal — Exit journal mode",
+      "/adjust <request> — Request change for tomorrow",
+      "/approve — Approve tomorrow's plan (L2 autonomy)",
+      "/review — Quick weekly stats",
+      "/progress — Link to PWA progress page",
+    ].join("\n");
+    await ctx.reply(help);
+  });
+}
+
+let cachedHandler: ((req: Request) => Promise<Response>) | null = null;
+
+function getHandler(): (req: Request) => Promise<Response> {
+  if (cachedHandler) return cachedHandler;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN is required");
+  const bot = new Bot(token);
+  registerHandlers(bot);
+  cachedHandler = webhookCallback(bot, "std/http");
+  return cachedHandler;
+}
+
+export async function POST(req: Request) {
+  try {
+    return await getHandler()(req);
+  } catch (e) {
+    console.error("Telegram webhook error:", e);
+    return new Response("OK", { status: 200 });
+  }
+}

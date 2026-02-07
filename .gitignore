@@ -1,0 +1,8 @@
+# Jarvis app
+jarvis/node_modules/
+jarvis/.next/
+jarvis/.env
+jarvis/.env.local
+
+# OS
+.DS_Store
