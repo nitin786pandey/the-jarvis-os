@@ -20,12 +20,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const date = tomorrow();
   try {
-    const date = tomorrow();
     const plan = await generatePlan(date);
-    await setPlan(plan);
+    try {
+      await setPlan(plan);
+    } catch (e) {
+      console.error("Evening plan: setPlan failed", e);
+      return NextResponse.json(
+        { error: "setPlan (Redis) failed", detail: e instanceof Error ? e.message : String(e) },
+        { status: 500 }
+      );
+    }
     const text = planToTelegramText(plan);
-    await sendPlainMessage(text);
+    try {
+      await sendPlainMessage(text);
+    } catch (e) {
+      console.error("Evening plan: sendPlainMessage failed", e);
+      return NextResponse.json(
+        { error: "Telegram send failed", detail: e instanceof Error ? e.message : String(e) },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ ok: true, date, message: "Plan generated and sent" });
   } catch (e) {
     console.error("Evening plan cron error:", e);
@@ -35,6 +51,9 @@ export async function GET(req: Request) {
     } catch {
       // ignore
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      { error: "generatePlan failed", detail: msg },
+      { status: 500 }
+    );
   }
 }

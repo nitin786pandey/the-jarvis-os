@@ -71,6 +71,8 @@ npm run dev
 
 Vercel cron calls must include header: `Authorization: Bearer <CRON_SECRET>`.
 
+**Where the cron runs:** On Vercel Hobby, crons don’t execute. The **9 PM IST evening plan** is triggered by **[cron-job.org](https://cron-job.org)** (see `docs/CRON_SETUP.md`). Manage or disable the job there.
+
 ## API
 
 - `GET /api/plan/[date]` — get plan for date (YYYY-MM-DD)
