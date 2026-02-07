@@ -36,3 +36,4 @@ Thumbs.db
 **/public/workbox-*.js
 **/public/worker-*.js
 **/public/swe-worker-*.js
+.vercel

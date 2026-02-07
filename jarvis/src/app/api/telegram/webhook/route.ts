@@ -23,8 +23,17 @@ function isAllowed(chatId: number): boolean {
 }
 
 function registerHandlers(bot: Bot): void {
+  async function requireAllowed(ctx: { chat: { id: number }; reply: (text: string) => Promise<unknown> }): Promise<boolean> {
+    if (isAllowed(ctx.chat.id)) return true;
+    await ctx.reply(
+      `This bot only responds in the configured chat. Your chat ID: \`${ctx.chat.id}\`. ` +
+        "Set TELEGRAM_CHAT_ID to this value in Vercel → Settings → Environment Variables, then redeploy."
+    );
+    return false;
+  }
+
   bot.command("today", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const date = today();
     const plan = await getPlan(date);
     if (!plan) {
@@ -35,7 +44,7 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("tomorrow", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const date = tomorrow();
     const plan = await getPlan(date);
     if (!plan) {
@@ -46,7 +55,7 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("done", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const args = ctx.message?.text?.split(/\s+/)?.slice(1) || [];
     const taskId = args[0];
     if (!taskId) {
@@ -67,7 +76,7 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("skip", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const text = ctx.message?.text?.split(/\s+/)?.slice(1)?.join(" ") || "";
     const [taskId, ...reasonParts] = text.split(/\s+/);
     const reason = reasonParts.join(" ");
@@ -89,19 +98,19 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("journal", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     await setUserState({ journalMode: true });
     await ctx.reply("Journal mode on. Send your entry as a message, then /done_journal when finished.");
   });
 
   bot.command("done_journal", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     await setUserState({ journalMode: false });
     await ctx.reply("Journal mode off.");
   });
 
   bot.command("adjust", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const request = ctx.message?.text?.replace(/^\/adjust\s*/, "")?.trim();
     if (!request) {
       await ctx.reply("Usage: /adjust <your request> e.g. /adjust swap cardio for swimming today");
@@ -120,13 +129,13 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("approve", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     await setUserState({ lastPlanApprovedAt: new Date().toISOString() });
     await ctx.reply("Plan approved. You're all set for tomorrow.");
   });
 
   bot.command("review", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const dates = lastNDates(7);
     const plans = await getPlans(dates);
     let completed = 0;
@@ -145,12 +154,12 @@ function registerHandlers(bot: Bot): void {
   });
 
   bot.command("progress", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     await ctx.reply("Progress charts are on the PWA. Open the app and go to the Progress page.");
   });
 
   bot.on("message:text", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
+    if (!(await requireAllowed(ctx))) return;
     const state = await getUserState();
     if (state.journalMode) {
       const date = today();
@@ -181,21 +190,28 @@ function registerHandlers(bot: Bot): void {
     await ctx.reply("Send /today for today's plan, /journal to log your day, or /help for all commands.");
   });
 
+  const helpText = [
+    "/today - Show today's plan",
+    "/tomorrow - Show tomorrow's plan",
+    "/done <id> - Mark task done (e.g. /done b1)",
+    "/skip <id> [reason] - Skip task, optional reason",
+    "/journal - Enter journal mode; next message is your entry",
+    "/done_journal - Exit journal mode",
+    "/adjust <request> - Request change for tomorrow",
+    "/approve - Approve tomorrow's plan",
+    "/review - Quick weekly stats",
+    "/progress - Link to PWA progress page",
+    "/help - This message",
+  ].join("\n");
+
+  bot.command("start", async (ctx) => {
+    if (!(await requireAllowed(ctx))) return;
+    await ctx.reply("Jarvis Life Planner. Commands:\n\n" + helpText);
+  });
+
   bot.command("help", async (ctx) => {
-    if (!isAllowed(ctx.chat.id)) return;
-    const help = [
-      "/today — Show today's plan",
-      "/tomorrow — Show tomorrow's plan",
-      "/done <id> — Mark task done (e.g. /done b1)",
-      "/skip <id> [reason] — Skip task, optional reason",
-      "/journal — Enter journal mode; next message is your entry",
-      "/done_journal — Exit journal mode",
-      "/adjust <request> — Request change for tomorrow",
-      "/approve — Approve tomorrow's plan (L2 autonomy)",
-      "/review — Quick weekly stats",
-      "/progress — Link to PWA progress page",
-    ].join("\n");
-    await ctx.reply(help);
+    if (!(await requireAllowed(ctx))) return;
+    await ctx.reply(helpText);
   });
 }
 
