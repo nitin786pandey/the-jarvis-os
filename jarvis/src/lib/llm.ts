@@ -1,14 +1,14 @@
-const DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+const DEFAULT_BASE_URL = "https://api.mulerouter.ai/v1";
 const DEFAULT_MODEL = "qwen-plus";
 
 type Message = { role: "system" | "user" | "assistant"; content: string };
 
 export async function chat(messages: Message[], options?: { maxTokens?: number }): Promise<string> {
-  const apiKey = process.env.QWEN_API_KEY;
-  const baseUrl = process.env.QWEN_BASE_URL || DEFAULT_BASE_URL;
-  const model = process.env.QWEN_MODEL || DEFAULT_MODEL;
+  const apiKey = process.env.LLM_API_KEY || process.env.QWEN_API_KEY;
+  const baseUrl = process.env.LLM_BASE_URL || process.env.QWEN_BASE_URL || DEFAULT_BASE_URL;
+  const model = process.env.LLM_MODEL || process.env.QWEN_MODEL || DEFAULT_MODEL;
 
-  if (!apiKey) throw new Error("QWEN_API_KEY is not set");
+  if (!apiKey) throw new Error("LLM_API_KEY (or QWEN_API_KEY) is not set");
 
   const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
   const body = {
@@ -29,7 +29,7 @@ export async function chat(messages: Message[], options?: { maxTokens?: number }
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Qwen API error ${res.status}: ${err}`);
+    throw new Error(`LLM API error ${res.status}: ${err}`);
   }
 
   const data = (await res.json()) as {
@@ -39,7 +39,7 @@ export async function chat(messages: Message[], options?: { maxTokens?: number }
 
   if (data.error?.message) throw new Error(data.error.message);
   const content = data.choices?.[0]?.message?.content;
-  if (content == null) throw new Error("No content in Qwen response");
+  if (content == null) throw new Error("No content in LLM response");
   return content;
 }
 

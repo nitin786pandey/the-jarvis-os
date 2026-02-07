@@ -1,6 +1,6 @@
 # Jarvis Life Planner
 
-Autonomous daily planner that reads your PARA Life OS, generates adaptive daily tasklists via Qwen LLM, delivers them on Telegram, and accepts journal input for plan adjustment.
+Autonomous daily planner that reads your PARA Life OS, generates adaptive daily tasklists via an LLM (MuleRouter, OpenAI-compatible), delivers them on Telegram, and accepts journal input for plan adjustment.
 
 ## Features
 
@@ -13,7 +13,7 @@ Autonomous daily planner that reads your PARA Life OS, generates adaptive daily 
 
 - Node 18+
 - [Upstash Redis](https://upstash.com) (free tier)
-- [Qwen/DashScope](https://dashscope.aliyun.com) API key (OpenAI-compatible)
+- [MuleRouter](https://www.mulerouter.ai/docs/api-reference/quickstart) API key (OpenAI-compatible; get from [API Keys](https://mulerouter.ai/app/api-keys))
 - Telegram bot token from [@BotFather](https://t.me/BotFather)
 - Your Telegram chat ID
 
@@ -29,9 +29,10 @@ Autonomous daily planner that reads your PARA Life OS, generates adaptive daily 
 
    Copy `.env.local.example` to `.env.local` and set:
 
-   - `QWEN_API_KEY` — DashScope API key
-   - `QWEN_BASE_URL` — `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
-   - `QWEN_MODEL` — e.g. `qwen-plus`
+   - `LLM_API_KEY` — MuleRouter API key ([get one](https://mulerouter.ai/app/api-keys))
+   - `LLM_BASE_URL` — `https://api.mulerouter.ai/v1` (default)
+   - `LLM_MODEL` — e.g. `qwen-plus` (or `qwen3-max`, `qwen-flash`). See [supported models](https://mulerouter.ai/docs/api-reference/endpoint/openai/models.md).
+   - (Optional fallback: `QWEN_API_KEY`, `QWEN_BASE_URL`, `QWEN_MODEL` still work if `LLM_*` are not set.)
    - `TELEGRAM_BOT_TOKEN` — from BotFather
    - `TELEGRAM_CHAT_ID` — your chat ID (send a message to the bot, then `GET https://api.telegram.org/bot<TOKEN>/getUpdates`)
    - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — from Upstash dashboard
